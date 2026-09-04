@@ -1,0 +1,9 @@
+# MCP servers available only when Codex is started from this trusted project.
+
+[mcp_servers.vercel]
+url = "https://mcp.vercel.com"
+
+[mcp_servers.supabase]
+# Scoped to this Supabase project and read-only by default for safer development.
+url = "https://mcp.supabase.com/mcp?project_ref=xddywekhqhuyeykzvnav&read_only=true&features=docs,database,debugging,development,functions,storage"
+scopes = ["projects:read", "database:read", "analytics:read", "edge_functions:read", "environment:read", "storage:read"]

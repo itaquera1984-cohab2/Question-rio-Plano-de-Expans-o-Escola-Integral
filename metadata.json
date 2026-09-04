@@ -1,0 +1,6 @@
+{
+  "name": "Questionário Diagnóstico Municipal - Pindamonhangaba",
+  "description": "Sistema interativo de diagnóstico e coleta de dados da Secretaria Municipal de Educação de Pindamonhangaba com navegação livre, módulos de Educação Infantil e Ensino Fundamental I, e emissão de relatório homologado.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
