@@ -1,11 +1,9 @@
 import express from "express";
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
-import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import PDFDocument from "pdfkit";
 import dotenv from "dotenv";
-import { createServer as createViteServer } from "vite";
 import {
   OFFICIAL_SCHOOL_UNITS,
   findSchoolById,
@@ -968,30 +966,6 @@ Responda em formato JSON rigoroso:
   });
 
   return app;
-}
-
-export async function startServer() {
-  const app = createApp();
-  const PORT = 3000;
-
-  // Vite integration
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Servidor rodando em http://localhost:${PORT}`);
-  });
 }
 
 function generateHeuristicAnalysis(data: any): string {
