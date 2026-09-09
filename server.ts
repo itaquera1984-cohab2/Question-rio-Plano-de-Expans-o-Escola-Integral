@@ -10,12 +10,12 @@ import {
   findSchoolByLogin,
   validateSchoolCredentials,
   normalizeText,
-} from "./src/data/schoolsData.ts";
+} from "./src/data/schoolsData";
 import {
   generateCSVString,
   generateTextSummary,
-} from "./src/utils/helpers.ts";
-import { generateQuestionnairePdfBuffer } from "./src/utils/pdfQuestionnaireGenerator.ts";
+} from "./src/utils/helpers";
+import { generateQuestionnairePdfBuffer } from "./src/utils/pdfQuestionnaireGenerator";
 
 dotenv.config();
 
