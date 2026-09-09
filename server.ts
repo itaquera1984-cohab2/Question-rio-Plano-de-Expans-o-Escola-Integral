@@ -970,7 +970,7 @@ Responda em formato JSON rigoroso:
   return app;
 }
 
-async function startServer() {
+export async function startServer() {
   const app = createApp();
   const PORT = 3000;
 
@@ -1046,8 +1046,4 @@ ${efText}
 2. **Equipe e Gestão**: Fortalecer a contratação de monitores/educadores e assegurar a carga horária de coordenação pedagógica dedicada à Educação Integral.
 3. **Equidade Social**: Articular com a rede de Assistência Social e Transporte Escolar para priorizar crianças em fila de espera do território.
 `;
-}
-
-if (!process.env.VERCEL) {
-  startServer();
 }
