@@ -14,6 +14,7 @@ export default async function handler(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       error: 'Falha ao inicializar a API do sistema.',
+      diagnostic: error instanceof Error ? error.message : String(error),
     });
   }
 }
