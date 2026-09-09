@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx local-server.ts",
-    "build": "vite build",
+    "build": "npm run build:api && vite build",
+    "build:api": "esbuild serverless/index.ts --bundle --platform=node --format=esm --packages=external --outfile=api/index.js",
     "build:local-server": "vite build && esbuild local-server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
