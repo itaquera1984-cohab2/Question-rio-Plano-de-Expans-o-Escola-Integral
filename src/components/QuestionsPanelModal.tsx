@@ -12,6 +12,8 @@ import {
   School,
   Check,
   FastForward,
+  FileText,
+  Download,
 } from 'lucide-react';
 
 interface QuestionsPanelModalProps {
@@ -127,15 +129,29 @@ export const QuestionsPanelModal: React.FC<QuestionsPanelModalProps> = ({
             </button>
           </div>
 
-          {pendingCount > 0 && (
-            <button
-              onClick={handleGoToFirstPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-2xs"
+          <div className="flex items-center gap-2">
+            <a
+              href="/Questionario_Educacao_Integral_Questoes.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              download="Questionario_Educacao_Integral_Questoes.pdf"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-2xs"
+              title="Baixar Caderno Completo de Questões em PDF"
             >
-              <FastForward className="w-3.5 h-3.5" />
-              <span>Ir p/ 1ª Pendente</span>
-            </button>
-          )}
+              <Download className="w-3.5 h-3.5 text-blue-400" />
+              <span>Baixar Caderno PDF</span>
+            </a>
+
+            {pendingCount > 0 && (
+              <button
+                onClick={handleGoToFirstPending}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-2xs"
+              >
+                <FastForward className="w-3.5 h-3.5" />
+                <span>Ir p/ 1ª Pendente</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Search Bar */}

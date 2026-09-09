@@ -1,4 +1,5 @@
 import express from "express";
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
@@ -17,6 +18,7 @@ import {
   generateCSVString,
   generateTextSummary,
 } from "./src/utils/helpers.ts";
+import { generateQuestionnairePdfBuffer } from "./src/utils/pdfQuestionnaireGenerator.ts";
 
 dotenv.config();
 
@@ -25,6 +27,7 @@ const __dirname = path.dirname(__filename);
 
 // Supabase client helper
 let supabase: SupabaseClient | null = null;
+let authSupabase: SupabaseClient | null = null;
 function getSupabase(): SupabaseClient | null {
   if (supabase) return supabase;
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -45,9 +48,153 @@ function getSupabase(): SupabaseClient | null {
   return null;
 }
 
+function getAuthSupabase(): SupabaseClient | null {
+  if (authSupabase) return authSupabase;
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRoleKey) return null;
+  try {
+    authSupabase = createClient(url, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    return authSupabase;
+  } catch (error) {
+    console.warn("Could not initialize protected Supabase authentication client:", error);
+    return null;
+  }
+}
+
 const PRIMARY_BUCKET = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "GT-SME RICO";
 const REPORTS_FOLDER = (process.env.SUPABASE_STORAGE_FOLDER?.trim() || "protocolos").replace(/^\/+|\/+$/g, "");
 const FALLBACK_BUCKETS = [PRIMARY_BUCKET, "GT-SME RICO", "relatorios_diagnostico", "relatorios", "diagnosticos", "respostas_questionario", "protocolos", "public", "storage"];
+
+function constantTimeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function validateAdminCredentials(login: string, password: string): boolean {
+  const expectedLogin = process.env.ADMIN_LOGIN?.trim() || "";
+  const expectedPassword = process.env.ADMIN_PASSWORD || "";
+  if (!expectedLogin || !expectedPassword) return false;
+  return constantTimeEqual(normalizeText(login), normalizeText(expectedLogin)) &&
+    constantTimeEqual(password, expectedPassword);
+}
+
+function hashSchoolPassword(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const derivedKey = scryptSync(password, salt, 64).toString("hex");
+  return `scrypt$${salt}$${derivedKey}`;
+}
+
+function verifySchoolPassword(password: string, storedHash: string): boolean {
+  try {
+    const [algorithm, salt, expectedHex] = storedHash.split("$");
+    if (algorithm !== "scrypt" || !salt || !expectedHex) return false;
+    const actual = scryptSync(password, salt, 64);
+    const expected = Buffer.from(expectedHex, "hex");
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
+}
+
+function getNewPasswordError(password: string): string | null {
+  if (password.length < 10) return "A nova senha deve ter pelo menos 10 caracteres.";
+  if (!/[a-z]/.test(password)) return "A nova senha deve conter uma letra minúscula.";
+  if (!/[A-Z]/.test(password)) return "A nova senha deve conter uma letra maiúscula.";
+  if (!/\d/.test(password)) return "A nova senha deve conter um número.";
+  if (!/[^A-Za-z0-9]/.test(password)) return "A nova senha deve conter um caractere especial.";
+  return null;
+}
+
+async function sendEmailThroughResend(params: {
+  subject: string;
+  html: string;
+  attachments?: Array<{ filename: string; content: string }>;
+  idempotencyKey: string;
+}): Promise<{ success: boolean; id?: string; error?: string }> {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const to = process.env.REPORT_EMAIL_TO?.trim();
+  const from = process.env.REPORT_EMAIL_FROM?.trim();
+  if (!apiKey || !to || !from) {
+    return { success: false, error: "Envio por e-mail não configurado no servidor." };
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": params.idempotencyKey.slice(0, 256),
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject: params.subject,
+        html: params.html,
+        attachments: params.attachments,
+      }),
+    });
+    const result = await response.json().catch(() => null) as { id?: string; message?: string } | null;
+    if (!response.ok || !result?.id) {
+      return { success: false, error: result?.message || `Falha no provedor de e-mail (HTTP ${response.status}).` };
+    }
+    return { success: true, id: result.id };
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Não foi possível acessar o provedor de e-mail." };
+  }
+}
+
+async function emailSchoolReport(formData: any): Promise<{ success: boolean; id?: string; error?: string }> {
+  const csvContent = generateCSVString(formData);
+  const txtContent = generateTextSummary(formData);
+  const pdfContent = await generatePdfBuffer(txtContent);
+  const fileBaseName = getReportFileBaseName(formData);
+  const schoolName = String(formData.schoolName || "Unidade Escolar");
+  const protocol = String(formData.protocolNumber || "sem-protocolo");
+
+  return sendEmailThroughResend({
+    subject: `Diagnóstico de Educação Integral — ${schoolName} — ${protocol}`,
+    idempotencyKey: `relatorio-${formData.id || protocol}`,
+    html: `<h2>Relatório final do Diagnóstico da Política de Educação Integral</h2><p><strong>Unidade:</strong> ${schoolName.replace(/[<>&]/g, "")}</p><p><strong>Protocolo:</strong> ${protocol.replace(/[<>&]/g, "")}</p><p>Os relatórios oficiais seguem anexos nos formatos PDF, CSV e TXT.</p>`,
+    attachments: [
+      { filename: `${fileBaseName}.pdf`, content: pdfContent.toString("base64") },
+      { filename: `${fileBaseName}.csv`, content: Buffer.from(csvContent, "utf8").toString("base64") },
+      { filename: `${fileBaseName}.txt`, content: Buffer.from(txtContent, "utf8").toString("base64") },
+    ],
+  });
+}
+
+function getSessionSecret(): string {
+  return process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+}
+
+function createSchoolSessionToken(schoolId: string, isMasterAccess: boolean): string {
+  const secret = getSessionSecret();
+  if (!secret) throw new Error("SESSION_SECRET or SUPABASE_SERVICE_ROLE_KEY is required");
+  const payload = Buffer.from(JSON.stringify({ schoolId, isMasterAccess, exp: Date.now() + 8 * 60 * 60 * 1000 })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function readSchoolSession(req: express.Request): { schoolId: string; isMasterAccess: boolean } | null {
+  try {
+    const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    const [payload, suppliedSignature] = token.split(".");
+    const secret = getSessionSecret();
+    if (!payload || !suppliedSignature || !secret) return null;
+    const expectedSignature = createHmac("sha256", secret).update(payload).digest("base64url");
+    if (!constantTimeEqual(suppliedSignature, expectedSignature)) return null;
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (!parsed.schoolId || !parsed.exp || parsed.exp < Date.now()) return null;
+    return { schoolId: String(parsed.schoolId), isMasterAccess: Boolean(parsed.isMasterAccess) };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Ensures a valid Supabase Storage bucket is available or created
@@ -218,10 +365,12 @@ async function uploadAllReportArtifacts(
   }
 
   return {
-    success: uploadedFiles.length > 0,
+    success: uploadedFiles.length === filesToUpload.length,
     bucket,
     files: uploadedFiles,
-    error: uploadedFiles.length === 0 ? uploadErrors.join("; ") || "Nenhum artefato foi gravado no Supabase Storage." : undefined,
+    error: uploadedFiles.length === filesToUpload.length
+      ? undefined
+      : uploadErrors.join("; ") || "Nem todos os artefatos foram gravados no Supabase Storage.",
   };
 }
 
@@ -230,27 +379,70 @@ export function createApp() {
 
   app.use(express.json({ limit: "15mb" }));
 
+  app.post("/api/admin/validate", (req, res) => {
+    const login = String(req.body?.login || "");
+    const password = String(req.body?.password || "");
+    if (!validateAdminCredentials(login, password)) {
+      return res.status(401).json({ success: false, error: "Credenciais administrativas inválidas." });
+    }
+    return res.json({ success: true });
+  });
+
+  app.post("/api/admin/test-email", async (req, res) => {
+    const login = String(req.body?.login || "");
+    const password = String(req.body?.password || "");
+    if (!validateAdminCredentials(login, password)) {
+      return res.status(401).json({ success: false, error: "Credenciais administrativas inválidas." });
+    }
+    const result = await sendEmailThroughResend({
+      subject: "Teste de integração — Diagnóstico da Educação Integral",
+      idempotencyKey: `teste-email-${Date.now()}`,
+      html: "<h2>Teste de envio concluído</h2><p>Esta mensagem confirma a integração de e-mail do sistema de Diagnóstico da Política de Educação Integral da Rede Municipal de Pindamonhangaba.</p>",
+    });
+    return res.status(result.success ? 200 : 503).json(result);
+  });
+
   // Supabase: Validate School Unit & Login
   app.post("/api/supabase/validate-school", async (req, res) => {
     try {
       const { schoolId, login, senha, sector } = req.body;
       const cleanLogin = (login || "").trim();
-      const cleanSenha = (senha || "").trim();
+      const cleanSenha = String(senha || "");
+      const selectedUnit = findSchoolById(String(schoolId || ""));
+      const isMasterAccess = validateAdminCredentials(cleanLogin, cleanSenha);
+      const targetUnit = isMasterAccess ? selectedUnit : selectedUnit || findSchoolByLogin(cleanLogin);
 
-      // Check credentials using our official normalized validator first
-      const val = validateSchoolCredentials(schoolId, cleanLogin, cleanSenha);
-      const targetUnit = val.unit || findSchoolByLogin(cleanLogin) || findSchoolById(schoolId);
+      if (!targetUnit || (!isMasterAccess && normalizeText(targetUnit.login) !== normalizeText(cleanLogin))) {
+        return res.status(401).json({ success: false, error: "Login ou senha incorretos para a unidade selecionada." });
+      }
 
-      const db = getSupabase();
-      if (db && targetUnit) {
-        // Query status in Supabase table
+      const db = getAuthSupabase();
+      if (!db && !isMasterAccess) {
+        return res.status(503).json({ success: false, error: "O serviço de autenticação está temporariamente indisponível." });
+      }
+
+      let unitRecord: { status?: string; senha_hash?: string | null } | null = null;
+      if (db) {
         const { data, error } = await db
           .from("unidades_escolares")
-          .select("id, nome_escola, oferta, status, setor")
-          .or(`id.eq.${targetUnit.id},login.ilike.${cleanLogin}`)
+          .select("id, nome_escola, oferta, status, setor, senha_hash")
+          .eq("id", targetUnit.id)
           .maybeSingle();
 
-        if (!error && data) {
+        if (error) {
+          console.error("School authentication query failed:", error.message);
+          return res.status(503).json({ success: false, error: "Não foi possível consultar as credenciais da unidade. Verifique a configuração do Supabase." });
+        }
+        unitRecord = data;
+
+        const validSchoolPassword = data?.senha_hash
+          ? verifySchoolPassword(cleanSenha, data.senha_hash)
+          : validateSchoolCredentials(targetUnit.id, cleanLogin, cleanSenha).success;
+        if (!isMasterAccess && !validSchoolPassword) {
+          return res.status(401).json({ success: false, error: "Login ou senha incorretos para a unidade selecionada." });
+        }
+
+        if (!isMasterAccess && data) {
           if (data.status === "CONCLUIDO" || data.status === "CONCLUÍDO") {
             return res.json({
               success: false,
@@ -268,30 +460,67 @@ export function createApp() {
         }
       }
 
-      if (val.success && val.unit) {
-        return res.json({
-          success: true,
-          unit: {
-            id: val.unit.id,
-            name: val.unit.name,
-            offer: val.unit.offer,
-            sector: val.unit.sector || sector,
-            login: val.unit.login,
-          },
-        });
-      }
-
       return res.json({
-        success: false,
-        error: val.error || "Login ou Senha incorretos para o setor selecionado. Tente novamente.",
+        success: true,
+        isMasterAccess,
+        authToken: createSchoolSessionToken(targetUnit.id, isMasterAccess),
+        unit: {
+          id: targetUnit.id,
+          name: targetUnit.name,
+          offer: targetUnit.offer,
+          sector: targetUnit.sector || sector,
+          login: targetUnit.login,
+        },
       });
     } catch (e: any) {
       console.error("Supabase validation error:", e);
-      const val = validateSchoolCredentials(req.body?.schoolId, req.body?.login || "", req.body?.senha || "");
-      if (val.success && val.unit) {
-        return res.json({ success: true, unit: val.unit });
+      return res.status(500).json({ success: false, error: "Erro de validação. Tente novamente." });
+    }
+  });
+
+  app.post("/api/supabase/change-password", async (req, res) => {
+    try {
+      const schoolId = String(req.body?.schoolId || "");
+      const login = String(req.body?.login || "").trim();
+      const currentPassword = String(req.body?.currentPassword || "");
+      const newPassword = String(req.body?.newPassword || "");
+      const targetUnit = findSchoolById(schoolId);
+      const session = readSchoolSession(req);
+
+      if (!session || session.isMasterAccess || session.schoolId !== schoolId || !targetUnit || normalizeText(targetUnit.login) !== normalizeText(login)) {
+        return res.status(401).json({ success: false, error: "Unidade ou login inválido." });
       }
-      return res.json({ success: false, error: val.error || "Erro de validação. Tente novamente." });
+      const passwordError = getNewPasswordError(newPassword);
+      if (passwordError) return res.status(400).json({ success: false, error: passwordError });
+      if (constantTimeEqual(currentPassword, newPassword)) {
+        return res.status(400).json({ success: false, error: "A nova senha deve ser diferente da senha atual." });
+      }
+
+      const db = getAuthSupabase();
+      if (!db) return res.status(503).json({ success: false, error: "O serviço de autenticação está indisponível." });
+      const { data, error } = await db.from("unidades_escolares").select("id, senha_hash").eq("id", targetUnit.id).maybeSingle();
+      if (error || !data) {
+        console.error("Password lookup failed:", error?.message);
+        return res.status(503).json({ success: false, error: "Não foi possível consultar a credencial da unidade." });
+      }
+
+      const currentIsValid = data.senha_hash
+        ? verifySchoolPassword(currentPassword, data.senha_hash)
+        : validateSchoolCredentials(targetUnit.id, login, currentPassword).success;
+      if (!currentIsValid) return res.status(401).json({ success: false, error: "A senha atual está incorreta." });
+
+      const { error: updateError } = await db
+        .from("unidades_escolares")
+        .update({ senha_hash: hashSchoolPassword(newPassword), senha_alterada_em: new Date().toISOString() })
+        .eq("id", targetUnit.id);
+      if (updateError) {
+        console.error("Password update failed:", updateError.message);
+        return res.status(503).json({ success: false, error: "Não foi possível salvar a nova senha." });
+      }
+      return res.json({ success: true });
+    } catch (e) {
+      console.error("Password change error:", e);
+      return res.status(500).json({ success: false, error: "Erro ao alterar a senha. Tente novamente." });
     }
   });
 
@@ -299,7 +528,11 @@ export function createApp() {
   app.post("/api/supabase/submit-survey", async (req, res) => {
     try {
       const { formData, startTime, endTime, elapsedSeconds, elapsedTimeFormatted } = req.body;
-      const db = getSupabase();
+      const session = readSchoolSession(req);
+      if (!session || !formData?.schoolId || session.schoolId !== String(formData.schoolId)) {
+        return res.status(401).json({ success: false, error: "Sessão inválida ou incompatível com a unidade informada." });
+      }
+      const db = getAuthSupabase();
 
       if (db && formData) {
         // Normalize replicated fields for AMBOS offer
@@ -310,7 +543,7 @@ export function createApp() {
         }
 
         // 1. INSERT in respostas_questionario
-        const { error: insertErr } = await db.from("respostas_questionario").insert([
+        const { error: insertErr } = await db.from("respostas_questionario").upsert([
           {
             id: formData.id || "srv_" + Date.now(),
             unidade_id: formData.schoolId,
@@ -332,13 +565,48 @@ export function createApp() {
             respostas_json: formData,
             data_envio: new Date().toISOString(),
           },
-        ]);
+        ], { onConflict: "id" });
 
         if (insertErr) {
-          console.warn("Supabase insert notice in respostas_questionario:", insertErr);
+          console.error("Supabase insert failed in respostas_questionario:", insertErr);
+          return res.status(503).json({ success: false, error: "Não foi possível registrar as respostas no banco de dados." });
         }
 
-        // 2. UPDATE in unidades_escolares status = 'CONCLUIDO'
+        // 2. Upload all official report artifacts before locking the questionnaire.
+        let storageResult: any = null;
+        try {
+          storageResult = await uploadAllReportArtifacts(db, formData, {
+            startTime,
+            endTime,
+            elapsedSeconds,
+            elapsedTimeFormatted,
+          });
+        } catch (storageErr) {
+          console.warn("Storage upload notice:", storageErr);
+        }
+
+        if (!storageResult?.success) {
+          return res.status(503).json({
+            success: false,
+            error: storageResult?.error || "Falha ao gravar todos os relatórios no Supabase Storage.",
+            storage: storageResult,
+            filesUploaded: storageResult?.files || [],
+          });
+        }
+
+        const emailResult = await emailSchoolReport(formData);
+        if (!emailResult.success) {
+          console.error("Report e-mail delivery failed:", emailResult.error);
+          return res.status(503).json({
+            success: false,
+            error: `Os arquivos foram salvos no Supabase Storage, mas o envio por e-mail falhou: ${emailResult.error}`,
+            storage: storageResult,
+            filesUploaded: storageResult.files || [],
+            email: emailResult,
+          });
+        }
+
+        // 3. Lock the unit only after database, Storage and e-mail delivery succeed.
         const { error: updateErr } = await db
           .from("unidades_escolares")
           .update({
@@ -353,29 +621,17 @@ export function createApp() {
             updated_at: new Date().toISOString(),
           })
           .eq("id", formData.schoolId);
-
-        let storagePath: string | null = null;
-        let storageUrl: string | null = null;
-
-        // 3. Supabase Storage upload for JSON, CSV and TXT official reports
-        let storageResult: any = null;
-        try {
-          storageResult = await uploadAllReportArtifacts(db, formData, {
-            startTime,
-            endTime,
-            elapsedSeconds,
-            elapsedTimeFormatted,
-          });
-        } catch (storageErr) {
-          console.warn("Storage upload notice:", storageErr);
+        if (updateErr) {
+          console.error("School completion status update failed:", updateErr);
+          return res.status(503).json({ success: false, error: "Os relatórios foram enviados, mas não foi possível concluir o protocolo da unidade." });
         }
 
         return res.json({
-          success: storageResult?.success === true,
-          error: storageResult?.success ? undefined : storageResult?.error || "Falha ao gravar o relatório no Supabase Storage.",
+          success: true,
           storage: storageResult,
           storageBucket: storageResult?.bucket,
           filesUploaded: storageResult?.files || [],
+          email: emailResult,
         });
       }
 
@@ -694,6 +950,22 @@ Responda em formato JSON rigoroso:
     }
   });
 
+  // API: Export complete questionnaire PDF (Gerais, EI, EF)
+  const servePdfHandler = async (_req: any, res: any) => {
+    try {
+      const pdfBuffer = await generateQuestionnairePdfBuffer();
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", 'attachment; filename="Questionario_Educacao_Integral_Questoes.pdf"');
+      return res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("PDF generation endpoint error:", error);
+      return res.status(500).json({ error: "Falha ao gerar PDF do questionário." });
+    }
+  };
+
+  app.get("/api/pdf/questionnaire", servePdfHandler);
+  app.get("/Questionario_Educacao_Integral_Questoes.pdf", servePdfHandler);
+
   // Healthcheck endpoint
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
@@ -706,8 +978,7 @@ async function startServer() {
   const app = createApp();
   const PORT = 3000;
 
-  // Vite integration for local development and local production preview.
-  // On Vercel, the static site is served from dist and the API is served by api/[...path].ts.
+  // Vite integration
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

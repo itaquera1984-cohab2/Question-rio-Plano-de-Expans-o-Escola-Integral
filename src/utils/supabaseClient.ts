@@ -1,12 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import {
-  OFFICIAL_SCHOOL_UNITS,
-  findSchoolById,
-  findSchoolByLogin,
-  validateSchoolCredentials,
-  normalizeText,
-} from '../data/schoolsData';
-import { OfficialSchoolUnit, EducationSphere, RespondentRole, SurveyFormData, SchoolSubmissionRecord } from '../types/questionnaire';
+import { OfficialSchoolUnit, SurveyFormData, SchoolSubmissionRecord } from '../types/questionnaire';
 import { generateCSVString, generateTextSummary } from './helpers';
 
 // Retrieve Supabase credentials from client-side or window globals
@@ -33,6 +26,11 @@ function getSupabaseConfig(): { url: string; key: string } | null {
 }
 
 let supabaseInstance: SupabaseClient | null = null;
+let schoolSessionToken = '';
+
+export function clearSchoolSession(): void {
+  schoolSessionToken = '';
+}
 
 export function getSupabaseClient(): SupabaseClient | null {
   if (supabaseInstance) return supabaseInstance;
@@ -52,6 +50,8 @@ export interface ValidateSchoolResponse {
   success: boolean;
   error?: string;
   isCompleted?: boolean;
+  isMasterAccess?: boolean;
+  authToken?: string;
   unit?: OfficialSchoolUnit;
   submissionInfo?: {
     protocolNumber?: string;
@@ -60,8 +60,29 @@ export interface ValidateSchoolResponse {
   };
 }
 
+export async function changeSchoolPassword(params: {
+  schoolId: string;
+  login: string;
+  currentPassword: string;
+  newPassword: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch('/api/supabase/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${schoolSessionToken}` },
+      body: JSON.stringify(params),
+    });
+    const data = await res.json().catch(() => null);
+    if (data?.success && data?.authToken) schoolSessionToken = data.authToken;
+    return data || { success: false, error: 'Resposta inválida do serviço de autenticação.' };
+  } catch (err) {
+    console.warn('Password change route is not reachable:', err);
+    return { success: false, error: 'Não foi possível alterar a senha. Verifique a conexão e tente novamente.' };
+  }
+}
+
 /**
- * Validate school credentials against Supabase (or server API proxy / local official registry)
+ * Validate school credentials exclusively through the protected backend route.
  */
 export async function validateSchoolViaSupabase(params: {
   schoolId: string;
@@ -85,82 +106,22 @@ export async function validateSchoolViaSupabase(params: {
       }),
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.isCompleted) {
-        return data;
-      }
-      if (data && data.success && data.unit) {
-        return data;
-      }
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      return {
+        success: false,
+        error: data?.error || 'O serviço de autenticação está temporariamente indisponível.',
+      };
     }
+    if (data?.success && data?.authToken) schoolSessionToken = data.authToken;
+    return data || { success: false, error: 'Resposta inválida do serviço de autenticação.' };
   } catch (err) {
-    console.warn('Backend Supabase proxy not reachable, checking direct Supabase client or local validation:', err);
-  }
-
-  // If backend not available, try direct Supabase client if available
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      // Query: SELECT id, nome_escola, oferta, status FROM unidades_escolares WHERE login = '[login_informado]' AND senha = '[senha_informada]'
-      const { data, error } = await supabase
-        .from('unidades_escolares')
-        .select('id, nome_escola, oferta, status, setor, login')
-        .or(`login.ilike.${cleanLogin},id.eq.${params.schoolId || '00'}`)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        console.warn('Supabase query notice:', error);
-      } else if (data) {
-        const dAny = data as any;
-        const matchingOfficial =
-          findSchoolById(dAny.id) ||
-          findSchoolByLogin(dAny.login || cleanLogin) || {
-            id: dAny.id,
-            name: dAny.nome_escola,
-            offer: (dAny.oferta as EducationSphere) || 'AMBOS',
-            login: cleanLogin,
-            password: cleanSenha,
-            sector: dAny.setor || params.sector || 'Setor 1',
-            neighborhood: 'Pindamonhangaba',
-          };
-
-        if (data.status === 'CONCLUIDO' || data.status === 'CONCLUÍDO') {
-          return {
-            success: false,
-            isCompleted: true,
-            unit: matchingOfficial,
-            error: `Atenção: A unidade ${matchingOfficial.name} já enviou as respostas deste questionário. Para alterações de dados enviados, entre em contato com o Gabinete GT SME para solicitar a liberação de refazimento.`,
-          };
-        }
-
-        // Validate credentials
-        const val = validateSchoolCredentials(matchingOfficial.id, cleanLogin, cleanSenha);
-        if (val.success && val.unit) {
-          return {
-            success: true,
-            unit: val.unit,
-          };
-        }
-      }
-    } catch (err) {
-      console.warn('Error querying Supabase directly:', err);
-    }
-  }
-
-  // Fallback to official dataset validation with enhanced normalization
-  const localVal = validateSchoolCredentials(params.schoolId, cleanLogin, cleanSenha);
-  if (!localVal.success || !localVal.unit) {
+    console.warn('Backend authentication route is not reachable:', err);
     return {
       success: false,
-      error: localVal.error || 'Login ou Senha incorretos para o setor selecionado. Tente novamente.',
+      error: 'Não foi possível validar o acesso. Verifique a conexão e tente novamente.',
     };
   }
-
-  return {
-    success: true,
-    unit: localVal.unit,
-  };
 }
 
 const storageEnv = (import.meta as unknown as { env?: Record<string, string> }).env || {};
@@ -336,23 +297,21 @@ export async function submitSurveyToSupabase(payload: {
   try {
     const res = await fetch('/api/supabase/submit-survey', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${schoolSessionToken}` },
       body: JSON.stringify(payload),
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success) {
-        console.log('[Supabase API] Envio confirmado via rota backend');
-        return { success: true };
-      }
-      if (data.success === false) {
-        return { success: false, error: data.error || 'Falha ao gravar o relatório no Supabase Storage.' };
-      }
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.success) {
+      console.log('[Supabase API] Envio confirmado via rota backend');
+      return { success: true };
     }
+    return { success: false, error: data?.error || 'Falha ao gravar o relatório no Supabase Storage.' };
   } catch (err) {
-    console.warn('[Supabase API] Backend proxy submit notice, tentando gravação direta no cliente:', err);
+    console.warn('[Supabase API] Backend submission route unavailable:', err);
   }
+
+  return { success: false, error: 'Não foi possível confirmar o envio pelo servidor. Tente novamente.' };
 
   // Direct Supabase write and Storage upload
   const supabase = getSupabaseClient();

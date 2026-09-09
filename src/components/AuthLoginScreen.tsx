@@ -8,14 +8,9 @@ import {
   OFFICIAL_SCHOOL_UNITS,
   findSchoolById,
   findSchoolByLogin,
-  validateSchoolCredentials,
   normalizeText,
   SECTORS_LIST,
 } from '../data/schoolsData';
-import {
-  isSchoolSubmitted,
-  getSubmissionForSchool,
-} from '../utils/submissionRegistry';
 import { validateSchoolViaSupabase } from '../utils/supabaseClient';
 import {
   Building2,
@@ -47,6 +42,7 @@ interface AuthLoginScreenProps {
     respondentPhone: string;
     startTime: string;
     startTimestamp: number;
+    isMasterAccess?: boolean;
   }) => void;
   onOpenAdmin: () => void;
   onOpenHelp: () => void;
@@ -109,15 +105,6 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
     setErrorMessage(null);
     setLockedSchoolError(null);
 
-    // Check if already completed locally or in registry
-    if (isSchoolSubmitted(unit.id)) {
-      const sub = getSubmissionForSchool(unit.id);
-      setLockedSchoolError({
-        schoolName: unit.name,
-        submissionDate: sub?.submissionDate,
-        protocolNumber: sub?.protocolNumber,
-      });
-    }
   };
 
   const handleLoginInputChange = (val: string) => {
@@ -129,16 +116,7 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
         setSelectedSector(matched.sector);
       }
       setSelectedSchoolId(matched.id);
-      if (isSchoolSubmitted(matched.id)) {
-        const sub = getSubmissionForSchool(matched.id);
-        setLockedSchoolError({
-          schoolName: matched.name,
-          submissionDate: sub?.submissionDate,
-          protocolNumber: sub?.protocolNumber,
-        });
-      } else {
-        setLockedSchoolError(null);
-      }
+      setLockedSchoolError(null);
     }
   };
 
@@ -221,18 +199,6 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
         return;
       }
 
-      // Check local submission registry as well
-      if (isSchoolSubmitted(res.unit.id)) {
-        const sub = getSubmissionForSchool(res.unit.id);
-        setLockedSchoolError({
-          schoolName: res.unit.name,
-          submissionDate: sub?.submissionDate,
-          protocolNumber: sub?.protocolNumber,
-        });
-        setIsLoading(false);
-        return;
-      }
-
       // Capture session start time & unlock form
       const now = new Date();
       const startTimeFormatted = now.toLocaleTimeString('pt-BR', {
@@ -250,36 +216,11 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
         respondentPhone: respondentPhone.trim(),
         startTime: startTimeFormatted,
         startTimestamp,
+        isMasterAccess: res.isMasterAccess,
       });
     } catch (err: any) {
       console.error('Login error:', err);
-      // Fallback local check
-      const localVal = validateSchoolCredentials(
-        effectiveSchoolId,
-        loginInput,
-        passwordInput
-      );
-      if (!localVal.success || !localVal.unit) {
-        setErrorMessage(
-          localVal.error || 'Login ou Senha incorretos para a unidade selecionada. Tente novamente.'
-        );
-      } else {
-        const now = new Date();
-        const startTimeFormatted = now.toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        });
-        onLoginSuccess({
-          unit: localVal.unit,
-          role: respondentRole,
-          respondentName: respondentName.trim(),
-          respondentEmail: respondentEmail.trim(),
-          respondentPhone: respondentPhone.trim(),
-          startTime: startTimeFormatted,
-          startTimestamp: now.getTime(),
-        });
-      }
+      setErrorMessage('Não foi possível validar o acesso. Verifique a conexão e tente novamente.');
     } finally {
       setIsLoading(false);
     }
@@ -471,14 +412,11 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
                 className="w-full px-3.5 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 transition cursor-pointer"
               >
                 <option value="">-- Selecione sua unidade escolar --</option>
-                {schoolsInSector.map((school) => {
-                  const isDone = isSchoolSubmitted(school.id);
-                  return (
-                    <option key={school.id} value={school.id}>
-                      {school.id} - {school.name} ({school.offer === 'AMBOS' ? 'EI + EF I' : school.offer}) {isDone ? ' [CONCLUÍDO]' : ''}
-                    </option>
-                  );
-                })}
+                {schoolsInSector.map((school) => (
+                  <option key={school.id} value={school.id}>
+                    {school.id} - {school.name} ({school.offer === 'AMBOS' ? 'EI + EF I' : school.offer})
+                  </option>
+                ))}
               </select>
 
               {selectedUnit && (
@@ -547,7 +485,7 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
                     type={showPassword ? 'text' : 'password'}
                     value={passwordInput}
                     onChange={(e) => setPasswordInput(e.target.value)}
-                    placeholder="Ex: Angelo@2026"
+                    placeholder="Digite a senha fornecida pela Secretaria"
                     className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 text-sm font-semibold bg-white"
                   />
                   <button
@@ -563,7 +501,7 @@ export const AuthLoginScreen: React.FC<AuthLoginScreenProps> = ({
                   </button>
                 </div>
                 <span className="text-[10px] text-slate-400 mt-1 block">
-                  Padrão institucional: <code>Login@2026</code> (Ex: <code>Angelo@2026</code>)
+                  Utilize a senha institucional fornecida pela Secretaria Municipal de Educação.
                 </span>
               </div>
             </div>

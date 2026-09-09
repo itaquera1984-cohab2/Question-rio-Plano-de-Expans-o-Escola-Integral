@@ -193,27 +193,26 @@ Observações da Comunidade / Infraestrutura: ${det.observacao_comunidade || 'Ne
 --------------------------------------------------------------------------------
 ${data.sphere === 'EI' || data.sphere === 'AMBOS' ? `
 - Total Geral de Crianças Matriculadas (EI-01): ${data.ei_01_totalEnrolled ?? data.ei_15_totalEnrolled ?? 'N/D'}
-- Turmas por Etapa e Turno (EI-02): ${data.ei_02_classesBreakdown || 'N/D'}
-- Matrículas e Capacidades por Regime (EI-14):
+- Matrículas e Capacidades por Regime (EI-17):
   * Tempo Integral: ${data.ei_17_integralCount ?? 0} matriculados / Capacidade máx: ${data.ei_17_integralCapacity ?? 0} vagas
   * Tempo Parcial : ${data.ei_17_partialCount ?? 0} matriculados / Capacidade máx: ${data.ei_17_partialCapacity ?? 0} vagas
   * Total Geral   : ${(data.ei_17_integralCount || 0) + (data.ei_17_partialCount || 0)} matriculados / Capacidade total: ${(data.ei_17_integralCapacity || 0) + (data.ei_17_partialCapacity || 0)} vagas
-- Matrículas Ocupadas por Turno (EI-03): ${data.ei_02_occupiedMorning ?? 0} / ${data.ei_02_occupiedAfternoon ?? 0} / ${data.ei_02_occupiedIntegral ?? 0}
-- Fila de Espera por Vagas (EI-04): ${data.ei_03_waitingListCount ?? 0} crianças (Tempo médio (EI-05): ${data.ei_04_avgWaitTime ?? 'N/D'})
-- Motivos de Falta de Vaga (EI-06): ${data.ei_05_reasonsNoSlot?.join(', ') || 'N/D'}
-- Turno com Maior Demanda (EI-07): ${data.ei_06_highestDemandShift ?? 'N/D'}
-- Solicitações de Troca de Período (EI-08): ${data.ei_07_shiftChangeRequests ?? 'N/D'} (Qtd. EI-09: ${data.ei_08_shiftChangeWaitingCount ?? 0})
-- Possibilidade de Ampliação de Vagas (EI-11): ${data.ei_10_expansionCapacity ?? 'N/D'} (Estimativa EI-12: ${data.ei_11_additionalSlotsEstimated ?? 0} vagas)
-- Recursos Prioritários Necessários (EI-13): ${data.ei_12_resourcesNeeded?.join(', ') || 'N/D'}
-- Dimensionamento do Quadro de Profissionais (EI-15):
+- Matrículas Ocupadas por Turno (Manhã / Tarde / Integral): ${data.ei_02_occupiedMorning ?? 0} / ${data.ei_02_occupiedAfternoon ?? 0} / ${data.ei_02_occupiedIntegral ?? 0}
+- Fila de Espera por Vagas: ${data.ei_03_waitingListCount ?? 0} crianças (Tempo médio: ${data.ei_04_avgWaitTime ?? 'N/D'})
+- Motivos de Falta de Vaga: ${data.ei_05_reasonsNoSlot?.join(', ') || 'N/D'}
+- Turno com Maior Demanda: ${data.ei_06_highestDemandShift ?? 'N/D'}
+- Solicitações de Troca de Período: ${data.ei_07_shiftChangeRequests ?? 'N/D'} (Qtd: ${data.ei_08_shiftChangeWaitingCount ?? 0})
+- Possibilidade de Ampliação de Vagas: ${data.ei_10_expansionCapacity ?? 'N/D'} (Estimativa: ${data.ei_11_additionalSlotsEstimated ?? 0} vagas)
+- Recursos Prioritários Necessários: ${data.ei_12_resourcesNeeded?.join(', ') || 'N/D'}
+- Dimensionamento do Quadro de Profissionais (EI-18):
 ${staffDetailed}
-- Território Predominante (EI-16): ${data.ei_19_territoryType ?? 'N/D'}
-- Condição Socioeconômica Predominante (EI-17): ${data.ei_20_socioeconomicProfile ?? 'N/D'}
-- Adequação da Infraestrutura (EI-19): ${data.ei_22_infraAdequacy ?? 'N/D'}
-- Espaços Disponíveis na Unidade (EI-20): ${data.ei_23_availableSpaces?.join(', ') || 'N/D'}
-- Articulação com Rede de Proteção (EI-21): ${data.ei_24_territoryArticulation ?? 'N/D'}
-- Relação Escola-Família (EI-22): ${data.ei_25_familyRelationship ?? 'N/D'}
-- Autoavaliação da Qualidade Geral (EI-25): ${data.ei_28_overallQuality ?? 'N/D'}
+- Território Predominante: ${data.ei_19_territoryType ?? 'N/D'}
+- Condição Socioeconômica Predominante: ${data.ei_20_socioeconomicProfile ?? 'N/D'}
+- Adequação da Infraestrutura: ${data.ei_22_infraAdequacy ?? 'N/D'}
+- Espaços Disponíveis na Unidade: ${data.ei_23_availableSpaces?.join(', ') || 'N/D'}
+- Articulação com Rede de Proteção: ${data.ei_24_territoryArticulation ?? 'N/D'}
+- Relação Escola-Família: ${data.ei_25_familyRelationship ?? 'N/D'}
+- Autoavaliação da Qualidade Geral: ${data.ei_28_overallQuality ?? 'N/D'}
 ` : 'Não aplicável para esta unidade (Unidade exclusiva de Ensino Fundamental).'}
 
 5. SÍNTESE DAS RESPOSTAS - ENSINO FUNDAMENTAL I (EF I)
@@ -302,16 +301,15 @@ export function generateCSVString(data: SurveyFormData): string {
 
     // EI (se aplicável)
     EI_01_Total_Matriculados: data.ei_01_totalEnrolled ?? data.ei_15_totalEnrolled ?? '',
-    EI_02_Turmas_Por_Etapa: data.ei_02_classesBreakdown ?? '',
-    EI_18_Matriculas_Integral: data.ei_17_integralCount ?? '',
-    EI_18_Capacidade_Integral: data.ei_17_integralCapacity ?? '',
-    EI_18_Matriculas_Parcial: data.ei_17_partialCount ?? '',
-    EI_18_Capacidade_Parcial: data.ei_17_partialCapacity ?? '',
-    EI_18_Total_Matriculados: (data.ei_17_integralCount || 0) + (data.ei_17_partialCount || 0),
-    EI_18_Capacidade_Total: (data.ei_17_integralCapacity || 0) + (data.ei_17_partialCapacity || 0),
-    EI_03_Ocupadas_Manha: data.ei_02_occupiedMorning ?? '',
-    EI_03_Ocupadas_Tarde: data.ei_02_occupiedAfternoon ?? '',
-    EI_03_Ocupadas_Integral: data.ei_02_occupiedIntegral ?? '',
+    EI_17_Matriculas_Integral: data.ei_17_integralCount ?? '',
+    EI_17_Capacidade_Integral: data.ei_17_integralCapacity ?? '',
+    EI_17_Matriculas_Parcial: data.ei_17_partialCount ?? '',
+    EI_17_Capacidade_Parcial: data.ei_17_partialCapacity ?? '',
+    EI_17_Total_Matriculados: (data.ei_17_integralCount || 0) + (data.ei_17_partialCount || 0),
+    EI_17_Capacidade_Total: (data.ei_17_integralCapacity || 0) + (data.ei_17_partialCapacity || 0),
+    EI_02_Ocupadas_Manha: data.ei_02_occupiedMorning ?? '',
+    EI_02_Ocupadas_Tarde: data.ei_02_occupiedAfternoon ?? '',
+    EI_02_Ocupadas_Integral: data.ei_02_occupiedIntegral ?? '',
     EI_03_Fila_Espera: data.ei_03_waitingListCount ?? '',
     EI_04_Tempo_Medio_Espera: data.ei_04_avgWaitTime ?? '',
     EI_05_Motivos_Sem_Vaga: data.ei_05_reasonsNoSlot?.join('; ') ?? '',

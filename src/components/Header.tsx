@@ -4,9 +4,10 @@ import {
   RotateCcw,
   Sparkles,
   HelpCircle,
-  FolderDown,
   ChevronRight,
   ListFilter,
+  Download,
+  KeyRound,
 } from 'lucide-react';
 import { EducationSphere, RespondentRole } from '../types/questionnaire';
 
@@ -22,11 +23,11 @@ interface HeaderProps {
   respondentRole?: RespondentRole;
   protocolNumber?: string;
   onReset: () => void;
-  onOpenSavedDrawer: () => void;
   onOpenAiHelper: () => void;
   onOpenHelpModal: () => void;
   onOpenPanel: () => void;
   onOpenAdmin?: () => void;
+  onOpenChangePassword?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -41,11 +42,11 @@ export const Header: React.FC<HeaderProps> = ({
   respondentRole,
   protocolNumber,
   onReset,
-  onOpenSavedDrawer,
   onOpenAiHelper,
   onOpenHelpModal,
   onOpenPanel,
   onOpenAdmin,
+  onOpenChangePassword,
 }) => {
   const getSphereBadge = () => {
     switch (sphere) {
@@ -167,6 +168,17 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Quick Actions */}
             <div className="flex items-center space-x-1.5 border-l border-slate-200 pl-2 sm:pl-3">
+              {onOpenChangePassword && (
+                <button
+                  type="button"
+                  onClick={onOpenChangePassword}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition border border-emerald-200 cursor-pointer"
+                  title="Alterar minha senha"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Alterar senha</span>
+                </button>
+              )}
               {onOpenAdmin && (
                 <button
                   id="btn-admin-portal"
@@ -189,6 +201,19 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="hidden sm:inline">Painel</span>
               </button>
 
+              <a
+                id="btn-download-pdf-questions"
+                href="/Questionario_Educacao_Integral_Questoes.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                download="Questionario_Educacao_Integral_Questoes.pdf"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+                title="Baixar Caderno Completo de Questões em PDF (Gerais, EI e EF)"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-200" />
+                <span className="hidden sm:inline">PDF Questões</span>
+              </a>
+
               <button
                 id="btn-ai-helper"
                 onClick={onOpenAiHelper}
@@ -197,16 +222,6 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Sparkles className="w-3.5 h-3.5 text-blue-600" />
                 <span className="hidden sm:inline">Parecer IA</span>
-              </button>
-
-              <button
-                id="btn-saved-surveys"
-                onClick={onOpenSavedDrawer}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition border border-slate-200 cursor-pointer"
-                title="Diagnósticos Salvos"
-              >
-                <FolderDown className="w-3.5 h-3.5 text-slate-500" />
-                <span className="hidden sm:inline">Salvos</span>
               </button>
 
               <button

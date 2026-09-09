@@ -7,7 +7,6 @@ export interface OfficialSchoolUnit {
   name: string; // e.g. "EM Ângelo Paz"
   offer: EducationSphere; // "EF" | "EI" | "AMBOS"
   login: string; // e.g. "Angelo"
-  password: string; // e.g. "Angelo@2026"
   sector?: string; // e.g. "Setor 5"
   neighborhood?: string; // e.g. "Jardim América"
 }
@@ -79,12 +78,6 @@ export interface Ef02ClassDistribution {
   integral: number;
 }
 
-export interface Ei02ClassDistribution {
-  manha: number;
-  tarde: number;
-  integral: number;
-}
-
 export interface VisitFrequencyItem {
   dias?: number;
   meses?: number;
@@ -131,6 +124,7 @@ export interface SurveyFormData {
 
   // ================= TEMPO E REGISTRO DE SESSÃO =================
   schoolId?: string; // ID da Escola oficial ("01" a "37")
+  schoolLogin?: string; // Login institucional da unidade autenticada
   startTime?: string; // Horário de Início (HH:MM:SS)
   startTimestamp?: number; // Epoch ms do início
   endTime?: string; // Horário de Término (HH:MM:SS)
@@ -169,8 +163,6 @@ export interface SurveyFormData {
 
   // Bloco 1: Demanda Reprimida
   ei_01_totalCapacity?: number; // Deprecated
-  ei_02_classesBreakdown?: string;
-  ei_02_classesByStage?: Record<'Berçário' | 'Infantil I' | 'Infantil II' | 'Pré I' | 'Pré II', Ei02ClassDistribution>;
   ei_02_occupiedMorning?: number;
   ei_02_occupiedAfternoon?: number;
   ei_02_occupiedIntegral?: number;

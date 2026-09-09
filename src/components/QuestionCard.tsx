@@ -7,7 +7,6 @@ import {
   Ei18StaffData,
   Ei17Data,
   Ef02ClassDistribution,
-  Ei02ClassDistribution,
 } from '../types/questionnaire';
 import { isStepAnswered, isStepSuppressed } from '../data/steps';
 import {
@@ -77,24 +76,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   onJumpToStep,
   onOpenPanel,
 }) => {
-  const displayedStep = step;
-  const isEiClassDistribution = step.id === 'EI_02' && step.stepCode === 'EI-02';
-  const legacyEiStepIds: Record<string, string> = {
-    EI_03: 'EI_02', EI_04: 'EI_03', EI_05: 'EI_04', EI_06: 'EI_05', EI_07: 'EI_06',
-    EI_08: 'EI_07', EI_09: 'EI_08', EI_10: 'EI_09', EI_11: 'EI_10', EI_12: 'EI_11',
-    EI_13: 'EI_12', EI_14: 'EI_17', EI_15: 'EI_18', EI_16: 'EI_19', EI_17: 'EI_20',
-    EI_18: 'EI_21', EI_19: 'EI_22', EI_20: 'EI_23', EI_21: 'EI_24', EI_22: 'EI_25',
-    EI_23: 'EI_26', EI_24: 'EI_27', EI_25: 'EI_28',
-  };
-  if (legacyEiStepIds[step.id]) {
-    step = { ...step, id: legacyEiStepIds[step.id] };
-  }
   const [quickJumpCode, setQuickJumpCode] = useState('');
   const [jumpError, setJumpError] = useState<string | null>(null);
   const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
   const [isManualSchoolInput, setIsManualSchoolInput] = useState(false);
 
-  const isAnswered = isStepAnswered(displayedStep.id, formData);
+  const isAnswered = isStepAnswered(step.id, formData);
 
   const handleQuickJump = (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,7 +176,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               </span>
             )}
             <span className="text-xs font-mono font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-              {displayedStep.stepCode}
+              {step.stepCode}
             </span>
           </div>
         </div>
@@ -1173,61 +1160,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
         )}
 
-        {isEiClassDistribution && (
-          <div className="space-y-4">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-              Número de turmas por etapa e turno:
-            </label>
-            <p className="text-xs text-slate-500">Informe zero quando não houver turma em determinada etapa ou turno.</p>
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <div className="min-w-[620px]">
-                <div className="grid grid-cols-[1.2fr_repeat(3,1fr)] bg-slate-100 text-[11px] font-bold text-slate-700">
-                  <span className="p-3">Etapa</span>
-                  <span className="p-3 text-center">Manhã</span>
-                  <span className="p-3 text-center">Tarde</span>
-                  <span className="p-3 text-center">Integral</span>
-                </div>
-                {(['Berçário', 'Infantil I', 'Infantil II', 'Pré I', 'Pré II'] as const).map((stage) => {
-                  const classData = formData.ei_02_classesByStage?.[stage] || { manha: 0, tarde: 0, integral: 0 };
-                  const updateClassData = (shift: keyof Ei02ClassDistribution, value: number) => {
-                    const classesByStage = {
-                      ...(formData.ei_02_classesByStage || {}),
-                      [stage]: { ...classData, [shift]: Math.max(0, value) },
-                    } as NonNullable<SurveyFormData['ei_02_classesByStage']>;
-                    const summary = (['Berçário', 'Infantil I', 'Infantil II', 'Pré I', 'Pré II'] as const)
-                      .map((item) => {
-                        const row = classesByStage[item] || { manha: 0, tarde: 0, integral: 0 };
-                        return `${item}: ${row.manha} manhã, ${row.tarde} tarde, ${row.integral} integral`;
-                      })
-                      .join(' | ');
-                    onChange({ ei_02_classesByStage: classesByStage, ei_02_classesBreakdown: summary });
-                  };
-
-                  return (
-                    <div key={stage} className="grid grid-cols-[1.2fr_repeat(3,1fr)] border-t border-slate-200 items-center">
-                      <span className="p-3 text-sm font-bold text-slate-800">{stage}</span>
-                      {(['manha', 'tarde', 'integral'] as const).map((shift) => (
-                        <div key={shift} className="p-2">
-                          <input
-                            type="number"
-                            min={0}
-                            value={classData[shift]}
-                            onChange={(e) => updateClassData(shift, parseInt(e.target.value, 10) || 0)}
-                            onFocus={(e) => e.target.select()}
-                            className="w-full py-2 text-center rounded-lg border border-slate-300 font-bold text-slate-900 bg-white"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ================= EI-03 (dados armazenados em campos legados EI-02) ================= */}
-        {!isEiClassDistribution && step.id === 'EI_02' && (
+        {/* ================= EI-02 ================= */}
+        {step.id === 'EI_02' && (
           <div className="space-y-4">
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
               Número de vagas atualmente ocupadas por turno:
@@ -1311,7 +1245,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                       Etapa Suprimida / Preenchida Automaticamente
                     </h4>
                     <p className="text-xs text-emerald-700 mt-1 leading-relaxed">
-                      No item anterior <strong>EI-04</strong> foi informado que <strong>não há crianças em lista de espera (0 alunos)</strong>. Portanto, o tempo médio de espera foi definido automaticamente como <strong>&ldquo;Não há tempo de espera&rdquo;</strong>.
+                      No item anterior <strong>EI-03</strong> foi informado que <strong>não há crianças em lista de espera (0 alunos)</strong>. Portanto, o tempo médio de espera foi definido automaticamente como <strong>&ldquo;Não há tempo de espera&rdquo;</strong>.
                     </p>
                   </div>
                 </div>
@@ -1324,7 +1258,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                     onClick={onNext}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
                   >
-                    <span>Avançar para EI-06</span>
+                    <span>Avançar para EI-05</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1372,10 +1306,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                   Etapa Suprimida / Preenchida Automaticamente
                 </h4>
                 <p className="text-xs text-emerald-700 leading-relaxed">
-                  Como o item <strong>EI-04</strong> foi respondido com zero, não há ausência de vaga a justificar. A resposta foi registrada como <strong>Não se aplica (Sem lista de espera)</strong>.
+                  Como o item <strong>EI-03</strong> foi respondido com zero, não há ausência de vaga a justificar. A resposta foi registrada como <strong>Não se aplica (Sem lista de espera)</strong>.
                 </p>
                 <button type="button" onClick={onNext} className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer">
-                  <span>Avançar para EI-07</span>
+                  <span>Avançar para EI-06</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -1424,10 +1358,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                   Etapa Suprimida / Preenchida Automaticamente
                 </h4>
                 <p className="text-xs text-emerald-700 leading-relaxed">
-                  Como não há fila no item <strong>EI-04</strong>, não existe turno de maior procura a registrar. A resposta foi definida como <strong>Não se aplica (Sem lista de espera)</strong>.
+                  Como não há fila no item <strong>EI-03</strong>, não existe turno de maior procura a registrar. A resposta foi definida como <strong>Não se aplica (Sem lista de espera)</strong>.
                 </p>
                 <button type="button" onClick={onNext} className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition cursor-pointer">
-                  <span>Avançar para EI-08</span>
+                  <span>Avançar para EI-07</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -1561,7 +1495,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                       Etapa Suprimida / Dispensada
                     </h4>
                     <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      No item <strong>EI-11</strong> foi informado que a unidade escolar <strong>não possui capacidade física e estrutural para ampliação de vagas (&ldquo;Não&rdquo;)</strong>. A estimativa de vagas adicionais foi definida como <strong>0 vagas adicionais</strong>.
+                      No item <strong>EI-10</strong> foi informado que a unidade escolar <strong>não possui capacidade física e estrutural para ampliação de vagas (&ldquo;Não&rdquo;)</strong>. A estimativa de vagas adicionais foi definida como <strong>0 vagas adicionais</strong>.
                     </p>
                   </div>
                 </div>
@@ -1574,7 +1508,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                     onClick={onNext}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
                   >
-                    <span>Avançar para EI-13 / EI-14</span>
+                    <span>Avançar para EI-12 / EI-13</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1612,7 +1546,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                       Etapa Suprimida / Dispensada
                     </h4>
                     <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      Como não há capacidade física para ampliação de vagas na unidade (conforme informado no item <strong>EI-11</strong>), o levantamento de recursos necessários foi dispensado.
+                      Como não há capacidade física para ampliação de vagas na unidade (conforme informado no item <strong>EI-10</strong>), o levantamento de recursos necessários foi dispensado.
                     </p>
                   </div>
                 </div>
@@ -1625,7 +1559,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                     onClick={onNext}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
                   >
-                    <span>Avançar para EI-14</span>
+                    <span>Avançar para EI-13</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -2506,10 +2440,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                   <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                      Classificação Territorial Integrada (Replicada de EI-16)
+                      Classificação Territorial Integrada (Replicada de EI-19)
                     </h4>
                     <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      Como a unidade escolar atende tanto a Educação Infantil quanto o Ensino Fundamental I no mesmo endereço e território, a classificação geográfica informada na etapa <strong>EI-16</strong> (<strong>{formData.ei_19_territoryType || 'Urbano'}</strong>) foi registrada e replicada automaticamente para o Fundamental I.
+                      Como a unidade escolar atende tanto a Educação Infantil quanto o Ensino Fundamental I no mesmo endereço e território, a classificação geográfica informada na etapa <strong>EI-19</strong> (<strong>{formData.ei_19_territoryType || 'Urbano'}</strong>) foi registrada e replicada automaticamente para o Fundamental I.
                     </p>
                   </div>
                 </div>
@@ -2556,10 +2490,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                   <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                      Condições Socioeconômicas Integradas (Replicada de EI-17)
+                      Condições Socioeconômicas Integradas (Replicada de EI-20)
                     </h4>
                     <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      Como os alunos da Educação Infantil e dos Anos Iniciais participam da mesma comunidade e território escolar, a avaliação das condições socioeconômicas informada em <strong>EI-17</strong> (<strong>{formData.ei_20_socioeconomicProfile || 'Mistas'}</strong>) foi replicada automaticamente para o relatório do Fundamental I.
+                      Como os alunos da Educação Infantil e dos Anos Iniciais participam da mesma comunidade e território escolar, a avaliação das condições socioeconômicas informada em <strong>EI-20</strong> (<strong>{formData.ei_20_socioeconomicProfile || 'Mistas'}</strong>) foi replicada automaticamente para o relatório do Fundamental I.
                     </p>
                   </div>
                 </div>
@@ -2994,10 +2928,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                     <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                        Quadro de Profissionais Unificado (Integrado de EI-15)
+                        Quadro de Profissionais Unificado (Integrado de EI-18)
                       </h4>
                       <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      Como a unidade escolar é a mesma, o quantitativo geral de profissionais e dimensionamento registrado no item <strong>EI-15</strong> foi integrado e replicado automaticamente para o relatório do Ensino Fundamental I.
+                        Como a unidade escolar é a mesma, o quantitativo geral de profissionais e dimensionamento registrado no item <strong>EI-18</strong> foi integrado e replicado automaticamente para o relatório do Ensino Fundamental I.
                       </p>
                     </div>
                   </div>

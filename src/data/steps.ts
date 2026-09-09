@@ -73,18 +73,6 @@ export const ALL_STEPS: QuestionStep[] = [
     appliesTo: ['EI', 'AMBOS'],
   },
   {
-    id: 'EI_CLASSES',
-    stepCode: 'EI-02',
-    blockId: 'EI_BLOCO_1',
-    blockLabel: 'EI Bloco 1 • Demanda e Matrículas',
-    title: 'Turmas por Ano/Série e Turno',
-    shortLabel: 'Turmas por Etapa (EI)',
-    directorPrompt: 'Informe a distribuição de turmas por ano/série (Berçário ao Pré II) e turno.',
-    description: 'Organização das turmas de Berçário ao Pré II nos períodos matutino, vespertino e integral.',
-    module: 'EI',
-    appliesTo: ['EI', 'AMBOS'],
-  },
-  {
     id: 'EI_02',
     stepCode: 'EI-02',
     blockId: 'EI_BLOCO_1',
@@ -711,23 +699,15 @@ export const ALL_STEPS: QuestionStep[] = [
 
 /**
  * Filter steps dynamically based on selected sphere:
- * - 'EI': Etapa 0, Etapa 1, EI-01..EI-25, Conclusão (28 etapas)
+ * - 'EI': Etapa 0, Etapa 1, EI-01..EI-28, Conclusão (31 etapas)
  * - 'EF': Etapa 0, Etapa 1, EF-01..EF-28, Conclusão (31 etapas)
- * - 'AMBOS': Etapa 0, Etapa 1, EI-01..EI-25, EF-01..EF-28, Conclusão (56 etapas)
+ * - 'AMBOS': Etapa 0, Etapa 1, EI-01..EI-28, EF-01..EF-28, Conclusão (59 etapas)
  */
 export function getApplicableSteps(sphere: EducationSphere): QuestionStep[] {
-  let eiQuestionNumber = 0;
   return ALL_STEPS.filter((step) => {
     if (step.appliesTo.includes('ALL')) return true;
     if (step.appliesTo.includes(sphere)) return true;
     return false;
-  }).map((step) => {
-    if (step.module === 'EI') {
-      eiQuestionNumber += 1;
-      const number = eiQuestionNumber;
-      return { ...step, id: `EI_${String(number).padStart(2, '0')}`, stepCode: `EI-${String(number).padStart(2, '0')}` };
-    }
-    return step;
   });
 }
 
@@ -738,12 +718,21 @@ export function isStepSuppressed(
   stepId: string,
   formData: SurveyFormData
 ): { suppressed: boolean; reason?: string; autoValueLabel?: string } {
+  if (stepId === 'EI_04' && formData.ei_03_waitingListCount === 0) {
+    return {
+      suppressed: true,
+      reason:
+        'No item EI-03 foi registrado que não há crianças na lista de espera (0 alunos). Portanto, esta pergunta foi automaticamente dispensada.',
+      autoValueLabel: 'Não há tempo de espera (Sem lista de espera)',
+    };
+  }
+
   if (stepId === 'EI_05' && formData.ei_03_waitingListCount === 0) {
     return {
       suppressed: true,
       reason:
-        'No item EI-04 foi registrado que não há crianças na lista de espera (0 alunos). Portanto, esta pergunta foi automaticamente dispensada.',
-      autoValueLabel: 'Não há tempo de espera (Sem lista de espera)',
+        'No item EI-03 foi registrado que não há crianças na lista de espera (0 alunos). Portanto, não há motivo de ausência de vaga a informar.',
+      autoValueLabel: 'Não se aplica (Sem lista de espera)',
     };
   }
 
@@ -751,17 +740,17 @@ export function isStepSuppressed(
     return {
       suppressed: true,
       reason:
-        'No item EI-04 foi registrado que não há crianças na lista de espera (0 alunos). Portanto, não há motivo de ausência de vaga a informar.',
+        'No item EI-03 foi registrado que não há crianças na lista de espera (0 alunos). Portanto, não há turno de maior procura a informar.',
       autoValueLabel: 'Não se aplica (Sem lista de espera)',
     };
   }
 
-  if (stepId === 'EI_07' && formData.ei_03_waitingListCount === 0) {
+  if (stepId === 'EI_11' && formData.ei_10_expansionCapacity === 'Não') {
     return {
       suppressed: true,
       reason:
-        'No item EI-04 foi registrado que não há crianças na lista de espera (0 alunos). Portanto, não há turno de maior procura a informar.',
-      autoValueLabel: 'Não se aplica (Sem lista de espera)',
+        'No item EI-10 foi informado que a unidade não possui capacidade física/estrutural para ampliação de vagas ("Não"). Portanto, o cálculo de vagas adicionais foi dispensado.',
+      autoValueLabel: '0 vagas adicionais (Sem capacidade de ampliação)',
     };
   }
 
@@ -769,16 +758,7 @@ export function isStepSuppressed(
     return {
       suppressed: true,
       reason:
-        'No item EI-11 foi informado que a unidade não possui capacidade física/estrutural para ampliação de vagas ("Não"). Portanto, o cálculo de vagas adicionais foi dispensado.',
-      autoValueLabel: '0 vagas adicionais (Sem capacidade de ampliação)',
-    };
-  }
-
-  if (stepId === 'EI_13' && formData.ei_10_expansionCapacity === 'Não') {
-    return {
-      suppressed: true,
-      reason:
-        'No item EI-11 foi informado que a unidade não possui capacidade física/estrutural para ampliação de vagas ("Não"). Portanto, a indicação de recursos necessários foi dispensada.',
+        'No item EI-10 foi informado que a unidade não possui capacidade física/estrutural para ampliação de vagas ("Não"). Portanto, a indicação de recursos necessários foi dispensada.',
       autoValueLabel: 'Não se aplica (Sem ampliação prevista)',
     };
   }
@@ -789,8 +769,8 @@ export function isStepSuppressed(
     return {
       suppressed: true,
       reason:
-        'Como a unidade escolar atende Educação Infantil e Ensino Fundamental I no mesmo território físico, a classificação geográfica informada no item EI-16 foi integrada e replicada automaticamente para o Fundamental I.',
-      autoValueLabel: `${val} (Replicado de EI-16)`,
+        'Como a unidade escolar atende Educação Infantil e Ensino Fundamental I no mesmo território físico, a classificação geográfica informada no item EI-19 foi integrada e replicada automaticamente para o Fundamental I.',
+      autoValueLabel: `${val} (Replicado de EI-19)`,
     };
   }
 
@@ -799,8 +779,8 @@ export function isStepSuppressed(
     return {
       suppressed: true,
       reason:
-        'Como os estudantes da Educação Infantil e do Ensino Fundamental I pertencem à mesma comunidade territorial, o perfil socioeconômico informado em EI-17 foi integrado e replicado automaticamente para o Fundamental I.',
-      autoValueLabel: `${val} (Replicado de EI-17)`,
+        'Como os estudantes da Educação Infantil e do Ensino Fundamental I pertencem à mesma comunidade territorial, o perfil socioeconômico informado em EI-20 foi integrado e replicado automaticamente para o Fundamental I.',
+      autoValueLabel: `${val} (Replicado de EI-20)`,
     };
   }
 
@@ -810,15 +790,15 @@ export function isStepSuppressed(
     if (s) {
       const totAtual = Object.values(s).reduce((acc, item) => acc + (item?.atual || 0), 0);
       const totNec = Object.values(s).reduce((acc, item) => acc + (item?.necessidade || 0), 0);
-      label = `${totAtual} atuais (+${totNec} necessários) [Integrado de EI-15]`;
+      label = `${totAtual} atuais (+${totNec} necessários) [Integrado de EI-18]`;
     } else if (formData.ei_18_staffBreakdown || formData.ef_18_staffBreakdown) {
       const val = formData.ei_18_staffBreakdown || formData.ef_18_staffBreakdown || '';
-      label = val.length > 60 ? `${val.substring(0, 60)}... (Integrado de EI-15)` : `${val} (Integrado de EI-15)`;
+      label = val.length > 60 ? `${val.substring(0, 60)}... (Integrado de EI-18)` : `${val} (Integrado de EI-18)`;
     }
     return {
       suppressed: true,
       reason:
-        'Como a unidade escolar é a mesma, o quantitativo geral de profissionais e dimensionamento do quadro informado no item EI-15 foi integrado e replicado automaticamente para o Ensino Fundamental I.',
+        'Como a unidade escolar é a mesma, o quantitativo geral de profissionais e dimensionamento do quadro informado no item EI-18 foi integrado e replicado automaticamente para o Ensino Fundamental I.',
       autoValueLabel: label,
     };
   }
@@ -843,26 +823,6 @@ export function isStepAnswered(stepId: string, formData: SurveyFormData): boolea
   if (suppression.suppressed) {
     return true;
   }
-
-  if (stepId === 'EI_02') {
-    return Boolean(
-      formData.ei_02_classesByStage &&
-        (['Berçário', 'Infantil I', 'Infantil II', 'Pré I', 'Pré II'] as const).every((stage) =>
-          (['manha', 'tarde', 'integral'] as const).every(
-            (shift) => typeof formData.ei_02_classesByStage?.[stage]?.[shift] === 'number'
-          )
-        )
-    );
-  }
-
-  const legacyEiStepIds: Record<string, string> = {
-    EI_03: 'EI_02', EI_04: 'EI_03', EI_05: 'EI_04', EI_06: 'EI_05', EI_07: 'EI_06',
-    EI_08: 'EI_07', EI_09: 'EI_08', EI_10: 'EI_09', EI_11: 'EI_10', EI_12: 'EI_11',
-    EI_13: 'EI_12', EI_14: 'EI_17', EI_15: 'EI_18', EI_16: 'EI_19', EI_17: 'EI_20',
-    EI_18: 'EI_21', EI_19: 'EI_22', EI_20: 'EI_23', EI_21: 'EI_24', EI_22: 'EI_25',
-    EI_23: 'EI_26', EI_24: 'EI_27', EI_25: 'EI_28',
-  };
-  stepId = legacyEiStepIds[stepId] || stepId;
 
   switch (stepId) {
     case 'ETAPA_0_IDENTIFICACAO':
@@ -1185,14 +1145,6 @@ export const INITIAL_FORM_DATA: SurveyFormData = {
   ei_01_totalEnrolled: undefined,
   ei_15_totalEnrolled: undefined,
   ei_01_totalCapacity: undefined,
-  ei_02_classesBreakdown: '',
-  ei_02_classesByStage: {
-    'Berçário': { manha: 0, tarde: 0, integral: 0 },
-    'Infantil I': { manha: 0, tarde: 0, integral: 0 },
-    'Infantil II': { manha: 0, tarde: 0, integral: 0 },
-    'Pré I': { manha: 0, tarde: 0, integral: 0 },
-    'Pré II': { manha: 0, tarde: 0, integral: 0 },
-  },
   ei_02_occupiedMorning: undefined,
   ei_02_occupiedAfternoon: undefined,
   ei_02_occupiedIntegral: undefined,

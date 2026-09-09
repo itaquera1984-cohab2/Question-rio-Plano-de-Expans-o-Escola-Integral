@@ -1,8 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   OFFICIAL_SCHOOL_UNITS,
-  ADMIN_CREDENTIALS,
-  validateAdminCredentials,
   SECTORS_LIST,
 } from '../data/schoolsData';
 import {
@@ -55,6 +53,7 @@ import {
   FileText,
   Database,
   CheckCircle,
+  Mail,
 } from 'lucide-react';
 
 interface AdminDashboardModalProps {
@@ -188,18 +187,50 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     }
   };
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleSendTestEmail = async () => {
+    setIsSyncingStorage(true);
+    setStorageSyncMessage(null);
+    try {
+      const response = await fetch('/api/admin/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login: adminLoginInput, password: adminPasswordInput }),
+      });
+      const result = await response.json().catch(() => null);
+      setStorageSyncMessage(
+        response.ok && result?.success
+          ? `E-mail de teste enviado com sucesso. Identificador: ${result.id}`
+          : `Falha no teste de e-mail: ${result?.error || 'serviço indisponível'}`
+      );
+    } catch (error: any) {
+      setStorageSyncMessage(`Erro no teste de e-mail: ${error?.message || String(error)}`);
+    } finally {
+      setIsSyncingStorage(false);
+    }
+  };
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
-    if (validateAdminCredentials(adminLoginInput, adminPasswordInput)) {
+    try {
+      const response = await fetch('/api/admin/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login: adminLoginInput, password: adminPasswordInput }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) {
+        setLoginError(
+          result?.error || 'Credenciais de Administrador inválidas. Verifique o login e a senha do Gabinete GT.'
+        );
+        return;
+      }
       setIsAdminLoggedIn(true);
       setAdminSession(true);
       refreshSubmissions();
-    } else {
-      setLoginError(
-        'Credenciais de Administrador inválidas. Verifique o login e a senha do Gabinete GT.'
-      );
+    } catch {
+      setLoginError('Não foi possível validar o acesso administrativo. Tente novamente.');
     }
   };
 
@@ -577,6 +608,17 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
                           )}
                           <span>Gravar Relatório de Teste</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSendTestEmail}
+                          disabled={isSyncingStorage}
+                          className="px-3 py-2 bg-violet-700 hover:bg-violet-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+                          title="Enviar mensagem de teste ao e-mail configurado"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                          <span>Testar E-mail</span>
                         </button>
 
                         <button

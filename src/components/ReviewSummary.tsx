@@ -26,7 +26,7 @@ interface ReviewSummaryProps {
   formData: SurveyFormData;
   onChange: (updated: Partial<SurveyFormData>) => void;
   onJumpToStep: (stepId: string) => void;
-  onFinalSubmit: () => void;
+  onFinalSubmit: (signatureName: string) => Promise<{ success: boolean; error?: string }>;
   onOpenAiHelper: () => void;
 }
 
@@ -40,6 +40,7 @@ export const ReviewSummary: React.FC<ReviewSummaryProps> = ({
   const [signatureName, setSignatureName] = useState(formData.directorName || '');
   const [hasConfirmedTerms, setHasConfirmedTerms] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Calculate current elapsed time if not already captured
   const now = new Date();
@@ -59,7 +60,7 @@ export const ReviewSummary: React.FC<ReviewSummaryProps> = ({
   const displayEndTime = formData.endTime || currentEndTime;
   const displayElapsed = formData.elapsedTimeFormatted || computedElapsedFormatted;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!signatureName.trim()) {
       setErrorMsg('Por favor, confirme o nome do respondente para assinar o relatório.');
       return;
@@ -70,28 +71,13 @@ export const ReviewSummary: React.FC<ReviewSummaryProps> = ({
     }
     setErrorMsg(null);
 
-    const submissionEndTime = new Date().toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-    const submissionEndTimestamp = Date.now();
-    const totalSecs = Math.max(
-      1,
-      Math.round((submissionEndTimestamp - (formData.startTimestamp || (submissionEndTimestamp - 15 * 60 * 1000))) / 1000)
-    );
-    const m = Math.floor(totalSecs / 60);
-    const s = totalSecs % 60;
-    const finalElapsedFormatted = `${m} min ${s.toString().padStart(2, '0')} seg`;
-
-    onChange({
-      directorName: signatureName,
-      status: 'CONFIRMED',
-      endTime: submissionEndTime,
-      endTimestamp: submissionEndTimestamp,
-      elapsedSeconds: totalSecs,
-      elapsedTimeFormatted: finalElapsedFormatted,
-    });
+    setIsSubmitting(true);
+    const result = await onFinalSubmit(signatureName.trim());
+    setIsSubmitting(false);
+    if (!result.success) {
+      setErrorMsg(result.error || 'Não foi possível enviar e registrar o relatório. Tente novamente.');
+      return;
+    }
 
     try {
       confetti({
@@ -102,8 +88,6 @@ export const ReviewSummary: React.FC<ReviewSummaryProps> = ({
     } catch {
       // ignore
     }
-
-    onFinalSubmit();
   };
 
   const showEI = formData.sphere === 'EI' || formData.sphere === 'AMBOS';
@@ -317,7 +301,7 @@ export const ReviewSummary: React.FC<ReviewSummaryProps> = ({
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
                   <GraduationCap className="w-4 h-4 text-blue-600" />
-                  <span>2. Módulo EI • Educação Infantil (EI-01 a EI-25)</span>
+                  <span>2. Módulo EI • Educação Infantil (EI-01 a EI-28)</span>
                 </div>
                 <button
                   onClick={() => onJumpToStep('EI_01')}
@@ -366,7 +350,7 @@ export const ReviewSummary: React.FC<ReviewSummaryProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-50">
-                  <span className="text-slate-500">Quadro de Profissionais (EI-15):</span>
+                  <span className="text-slate-500">Quadro de Profissionais (EI-18):</span>
                   <span className="font-semibold text-slate-800">
                     {formData['EI-18'] || formData.ei_18_staffData ? (
                       (() => {
@@ -430,7 +414,7 @@ export const ReviewSummary: React.FC<ReviewSummaryProps> = ({
                   <span className="text-slate-500">Classificação Territorial:</span>
                   <span className="font-semibold text-slate-800">
                     {formData.sphere === 'AMBOS'
-                      ? `${formData.ef_04_territoryType || formData.ei_19_territoryType || 'Urbano'} (Replicado de EI-16)`
+                      ? `${formData.ef_04_territoryType || formData.ei_19_territoryType || 'Urbano'} (Replicado de EI-19)`
                       : formData.ef_04_territoryType || '-'}
                   </span>
                 </div>
@@ -438,7 +422,7 @@ export const ReviewSummary: React.FC<ReviewSummaryProps> = ({
                   <span className="text-slate-500">Condições Socioeconômicas:</span>
                   <span className="font-semibold text-slate-800">
                     {formData.sphere === 'AMBOS'
-                      ? `${formData.ef_05_socioeconomicProfile || formData.ei_20_socioeconomicProfile || 'Mistas'} (Replicado de EI-17)`
+                      ? `${formData.ef_05_socioeconomicProfile || formData.ei_20_socioeconomicProfile || 'Mistas'} (Replicado de EI-20)`
                       : formData.ef_05_socioeconomicProfile || '-'}
                   </span>
                 </div>
@@ -548,9 +532,10 @@ export const ReviewSummary: React.FC<ReviewSummaryProps> = ({
 
           <button
             onClick={handleConfirm}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm shadow-md transition cursor-pointer active:scale-[0.99]"
+            disabled={isSubmitting}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm shadow-md transition cursor-pointer active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
           >
-            <span>💾 SALVAR E REGISTRAR RESPOSTAS DEFINITIVAS</span>
+            <span>{isSubmitting ? 'ENVIANDO RELATÓRIOS AO SUPABASE...' : '💾 SALVAR E REGISTRAR RESPOSTAS DEFINITIVAS'}</span>
           </button>
         </div>
       </div>

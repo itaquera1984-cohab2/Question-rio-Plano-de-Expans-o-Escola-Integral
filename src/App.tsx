@@ -11,17 +11,15 @@ import { QuestionCard } from './components/QuestionCard';
 import { ReviewSummary } from './components/ReviewSummary';
 import { ProtocolCertificate } from './components/ProtocolCertificate';
 import { AiSynthesisModal } from './components/AiSynthesisModal';
-import { SavedSurveysDrawer } from './components/SavedSurveysDrawer';
 import { HelpModal } from './components/HelpModal';
 import { QuestionsPanelModal } from './components/QuestionsPanelModal';
 import { AuthLoginScreen } from './components/AuthLoginScreen';
 import { AdminDashboardModal } from './components/AdminDashboardModal';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import {
   saveSchoolSubmission,
-  isSchoolSubmitted,
-  getSubmissionForSchool,
 } from './utils/submissionRegistry';
-import { submitSurveyToSupabase } from './utils/supabaseClient';
+import { clearSchoolSession, submitSurveyToSupabase } from './utils/supabaseClient';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   GraduationCap,
@@ -45,55 +43,36 @@ import {
   LogOut,
 } from 'lucide-react';
 
-const STORAGE_KEY_ACTIVE = 'pinda_diagnostico_active_survey_v3';
-const STORAGE_KEY_LIST = 'pinda_diagnostico_saved_surveys_v3';
+const LEGACY_SURVEY_STORAGE_KEYS = [
+  'pinda_diagnostico_active_survey_v3',
+  'pinda_diagnostico_saved_surveys_v3',
+];
+
+function createFreshSurvey(): SurveyFormData {
+  return {
+    ...structuredClone(INITIAL_FORM_DATA),
+    id: 'pinda_srv_' + Date.now(),
+    protocolNumber: generateProtocol(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 export default function App() {
-  // Active survey state
-  const [formData, setFormData] = useState<SurveyFormData>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_ACTIVE);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.warn('Error reading active survey from localStorage', e);
-    }
-    const freshId = 'pinda_srv_' + Date.now();
-    return {
-      ...INITIAL_FORM_DATA,
-      id: freshId,
-      protocolNumber: generateProtocol(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  });
+  // Every browser load starts unauthenticated with a clean questionnaire.
+  const [formData, setFormData] = useState<SurveyFormData>(createFreshSurvey);
 
-  // Check if session is authenticated
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    // If formData has schoolId and is not completed yet, or if it was confirmed
-    return !!(formData.schoolId && formData.directorName);
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isMasterAccess, setIsMasterAccess] = useState(false);
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [savedSurveys, setSavedSurveys] = useState<SurveyFormData[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_LIST);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.warn('Error reading saved surveys list', e);
-    }
-    return [];
-  });
 
   // UI Modals & Drawers
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   // Dynamic Applicable Steps based on selected sphere (EI, EF, AMBOS)
   const applicableSteps = useMemo(() => {
@@ -107,23 +86,14 @@ export default function App() {
     }
   }, [applicableSteps.length, currentStepIndex]);
 
-  // Persist active survey
+  // Remove obsolete global caches that could expose one school's answers to another login.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_ACTIVE, JSON.stringify(formData));
+      LEGACY_SURVEY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
     } catch (e) {
-      console.error(e);
+      console.warn('Não foi possível limpar os caches legados do questionário.', e);
     }
-  }, [formData]);
-
-  // Persist saved list
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_LIST, JSON.stringify(savedSurveys));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [savedSurveys]);
+  }, []);
 
   const updateFormData = (updated: Partial<SurveyFormData>) => {
     setFormData((prev) => {
@@ -166,31 +136,14 @@ export default function App() {
     respondentPhone: string;
     startTime: string;
     startTimestamp: number;
+    isMasterAccess?: boolean;
   }) => {
-    // If there is an existing submission for this school unit, load it
-    const existingSubmission = getSubmissionForSchool(payload.unit.id);
-    if (existingSubmission && existingSubmission.formData) {
-      setFormData({
-        ...existingSubmission.formData,
-        directorName: payload.respondentName || existingSubmission.formData.directorName,
-        directorEmail: payload.respondentEmail || existingSubmission.formData.directorEmail,
-        directorPhone: payload.respondentPhone || existingSubmission.formData.directorPhone,
-        respondentRole: payload.role || existingSubmission.formData.respondentRole,
-      });
-      setIsAuthenticated(true);
-      setCurrentStepIndex(0);
-      return;
-    }
-
-    // New questionnaire session for this school unit: start with clean, zeroed fields
-    const freshId = 'pinda_srv_' + Date.now();
+    // A successful login always receives a clean questionnaire for its own unit.
     const updatedData: SurveyFormData = {
-      ...INITIAL_FORM_DATA,
-      id: freshId,
-      protocolNumber: generateProtocol(),
-      createdAt: new Date().toISOString(),
+      ...createFreshSurvey(),
       updatedAt: new Date().toISOString(),
       schoolId: payload.unit.id,
+      schoolLogin: payload.unit.login,
       schoolName: payload.unit.name,
       schoolSector: payload.unit.sector,
       neighborhoodCoverage: payload.unit.neighborhood || '',
@@ -206,11 +159,15 @@ export default function App() {
 
     setFormData(updatedData);
     setIsAuthenticated(true);
+    setIsMasterAccess(Boolean(payload.isMasterAccess));
     setCurrentStepIndex(0);
   };
 
   const handleLogout = () => {
+    clearSchoolSession();
     setIsAuthenticated(false);
+    setIsMasterAccess(false);
+    setIsPasswordModalOpen(false);
     handleNewSurvey();
   };
 
@@ -258,7 +215,17 @@ export default function App() {
     }
   };
 
-  const handleFinalSubmit = () => {
+  const handleFinalSubmit = async (signatureName: string): Promise<{ success: boolean; error?: string }> => {
+    const unansweredSteps = applicableSteps.filter(
+      (step) => step.id !== 'CONCLUSAO_RESUMO' && !isStepAnswered(step.id, formData)
+    );
+    if (unansweredSteps.length > 0) {
+      return {
+        success: false,
+        error: `Ainda existem ${unansweredSteps.length} questão(ões) pendente(s). Complete todas as respostas antes do envio definitivo.`,
+      };
+    }
+
     const now = new Date();
     const submissionEndTime = now.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
@@ -281,6 +248,7 @@ export default function App() {
 
     const confirmedData: SurveyFormData = {
       ...formData,
+      directorName: signatureName.trim(),
       ef_04_territoryType: finalEf04,
       ef_05_socioeconomicProfile: finalEf05,
       ef_18_staffBreakdown: finalEf18,
@@ -291,6 +259,17 @@ export default function App() {
       elapsedTimeFormatted: finalElapsedFormatted,
       updatedAt: now.toISOString(),
     };
+
+    const submissionResult = await submitSurveyToSupabase({
+      formData: confirmedData,
+      startTime: confirmedData.startTime || '08:00:00',
+      endTime: submissionEndTime,
+      elapsedSeconds: totalSecs,
+      elapsedTimeFormatted: finalElapsedFormatted,
+    });
+    if (!submissionResult.success) {
+      return { success: false, error: submissionResult.error || 'Não foi possível enviar o relatório ao Supabase Storage.' };
+    }
 
     updateFormData(confirmedData);
 
@@ -317,54 +296,16 @@ export default function App() {
       formData: confirmedData,
     });
 
-    // Fire Supabase transaction in background
-    submitSurveyToSupabase({
-      formData: confirmedData,
-      startTime: confirmedData.startTime || '08:00:00',
-      endTime: submissionEndTime,
-      elapsedSeconds: totalSecs,
-      elapsedTimeFormatted: finalElapsedFormatted,
-    }).catch((err) => {
-      console.warn('Supabase submission sync error:', err);
-    });
-
-    setSavedSurveys((prev) => {
-      const existingIdx = prev.findIndex((s) => s.id === confirmedData.id);
-      if (existingIdx >= 0) {
-        const copy = [...prev];
-        copy[existingIdx] = confirmedData;
-        return copy;
-      }
-      return [confirmedData, ...prev];
-    });
+    return { success: true };
   };
 
   const handleNewSurvey = () => {
-    const freshId = 'pinda_srv_' + Date.now();
-    const fresh: SurveyFormData = {
-      ...INITIAL_FORM_DATA,
-      id: freshId,
-      protocolNumber: generateProtocol(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setFormData(fresh);
+    clearSchoolSession();
+    setFormData(createFreshSurvey());
     setIsAuthenticated(false);
+    setIsMasterAccess(false);
+    setIsPasswordModalOpen(false);
     setCurrentStepIndex(0);
-  };
-
-  const handleSelectSurvey = (survey: SurveyFormData) => {
-    setFormData(survey);
-    setIsAuthenticated(true);
-    if (survey.status === 'CONFIRMED') {
-      setCurrentStepIndex(applicableSteps.length - 1);
-    } else {
-      setCurrentStepIndex(0);
-    }
-  };
-
-  const handleDeleteSurvey = (id: string) => {
-    setSavedSurveys((prev) => prev.filter((s) => s.id !== id));
   };
 
   const currentStep = applicableSteps[currentStepIndex] || applicableSteps[0];
@@ -420,11 +361,19 @@ export default function App() {
         respondentRole={formData.respondentRole}
         protocolNumber={formData.protocolNumber}
         onReset={handleNewSurvey}
-        onOpenSavedDrawer={() => setIsDrawerOpen(true)}
         onOpenAiHelper={() => setIsAiModalOpen(true)}
         onOpenHelpModal={() => setIsHelpModalOpen(true)}
         onOpenPanel={() => setIsPanelOpen(true)}
         onOpenAdmin={() => setIsAdminModalOpen(true)}
+        onOpenChangePassword={!isMasterAccess ? () => setIsPasswordModalOpen(true) : undefined}
+      />
+
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        schoolId={formData.schoolId || ''}
+        schoolLogin={formData.schoolLogin || ''}
+        schoolName={formData.schoolName || 'Unidade Escolar'}
+        onClose={() => setIsPasswordModalOpen(false)}
       />
 
       {/* Bento Main Layout: Sidebar + Content Grid */}
@@ -755,16 +704,6 @@ export default function App() {
         isOpen={isAiModalOpen}
         onClose={() => setIsAiModalOpen(false)}
         formData={formData}
-      />
-
-      <SavedSurveysDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        savedSurveys={savedSurveys}
-        activeSurveyId={formData.id}
-        onSelectSurvey={handleSelectSurvey}
-        onDeleteSurvey={handleDeleteSurvey}
-        onNewSurvey={handleNewSurvey}
       />
 
       <HelpModal
